@@ -57,6 +57,7 @@ function(set_options)
     option(OPTION_DEDICATED "Build dedicated server only (no GUI)" OFF)
     option(OPTION_INSTALL_FHS "Install with Filesystem Hierarchy Standard folders" ${DEFAULT_OPTION_INSTALL_FHS})
     option(OPTION_USE_ASSERTS "Use assertions; leave enabled for nightlies, betas, and RCs" OFF)
+    option(OPTION_ROAD_ONLY "Build road-only version (no rail, ship, or aircraft)" OFF)
     if(EMSCRIPTEN)
         # Although pthreads is supported, it is not in a way yet that is
         # useful for us.
@@ -84,6 +85,7 @@ function(show_options)
     message(STATUS "Option Use assert - ${OPTION_USE_ASSERTS}")
     message(STATUS "Option Use threads - ${OPTION_USE_THREADS}")
     message(STATUS "Option Use NSIS - ${OPTION_USE_NSIS}")
+    message(STATUS "Option Road Only - ${OPTION_ROAD_ONLY}")
 endfunction()
 
 # Add the definitions for the options that are selected.
@@ -103,5 +105,9 @@ function(add_definitions_based_on_options)
         add_definitions(-DWITH_ASSERT)
     else()
         add_definitions(-DNDEBUG)
+    endif()
+
+    if(OPTION_ROAD_ONLY)
+        add_definitions(-DROAD_ONLY)
     endif()
 endfunction()
