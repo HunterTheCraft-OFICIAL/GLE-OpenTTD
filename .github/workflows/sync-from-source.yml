@@ -1,61 +1,48 @@
-
-name: Sync from OpenTTD Source
+name: 🔄 Sync Repositories
 
 on:
-  workflow_dispatch: # Permite executar manualmente na aba Actions
+  workflow_dispatch:  # Permite rodar manualmente pela aba Actions
   schedule:
-    - cron: '0 3 * * *' # Opcional: roda todo dia às 3am UTC
+    - cron: '0 */6 * * *'  # Ex: roda a cada 6h (ajuste conforme necessário)
+
+permissions:
+  contents: write  # Necessário para o bot fazer push
 
 jobs:
   sync:
     runs-on: ubuntu-latest
-    permissions:
-      contents: write # Permissão crucial para fazer o push
-
     steps:
-      - name: Checkout do repositório atual
+      - name: 📥 Checkout do repositório destino
         uses: actions/checkout@v4
         with:
           token: ${{ secrets.GITHUB_TOKEN }}
-          fetch-depth: 0 # Baixa todo o histórico para evitar conflitos
+          fetch-depth: 0
 
-      - name: Configurar Git User
-        run: |
-          git config --global user.name "github-actions[bot]"
-          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+      - name: 📦 Clonar repositório de origem
+        run: git clone --depth 1 https://github.com/HunterTheCraft-OFICIAL/openttd-android-Mobile-Android-.git /tmp/source_repo
 
-      - name: Clonar repositório fonte (HunterTheCraft-OFICIAL/openttd-android-Mobile-Android-)
+      - name: 🔄 Sincronizar arquivos (sem corromper .git)
         run: |
-          echo "📥 Clonando repositório fonte..."
-          # Clona em um diretório temporário fora da pasta atual
-          git clone --depth 1 https://github.com/HunterTheCraft-OFICIAL/openttd-android-Mobile-Android-.git /tmp/source_repo
+          # rsync é mais seguro que cp. --exclude='.git' evita sobrescrever o histórico
+          rsync -av --delete --exclude='.git' /tmp/source_repo/ ./
+          rm -rf /tmp/source_repo
 
-      - name: Limpar arquivos atuais (exceto .git)
+      - name: 🔍 Verificar se há alterações
+        id: git-check
         run: |
-          echo "🧹 Limpando diretório atual..."
-          # Remove tudo, mas mantém a pasta .git intacta
-          find . -mindepth 1 -not -path "./.git" -not -path "./.git/*" -delete
-          
-          # Copia tudo do source para cá
-          echo "📂 Copiando novos arquivos..."
-          cp -rv /tmp/source_repo/. .
-
-      - name: Verificar alterações
-        id: git_status
-        run: |
-          if [ -z "$(git status --porcelain)" ]; then
+          git add -A
+          if git diff --staged --quiet; then
             echo "changes=false" >> $GITHUB_OUTPUT
-            echo "✅ Nenhum alteração detectada."
+            echo "✅ Nenhuma alteração detectada."
           else
             echo "changes=true" >> $GITHUB_OUTPUT
-            echo "🔄 Alterações detectadas."
+            echo "🔄 Alterações detectadas!"
           fi
 
-      - name: Commit e Push das alterações
-        if: steps.git_status.outputs.changes == 'true'
+      - name: 💾 Commit e Push (só roda se houver mudanças)
+        if: steps.git-check.outputs.changes == 'true'
         run: |
-          echo "🚀 Enviando alterações..."
-          git add -A
-          git commit -m "chore: sync with HunterTheCraft-OFICIAL/openttd-android-Mobile-Android- [auto]"
-          git push origin main
-          echo "✅ Sincronização concluída com sucesso!"
+          git config --local user.email "github-actions[bot]@users.noreply.github.com"
+          git config --local user.name "github-actions[bot]"
+          git commit -m "🤖 Auto-sync: atualizado a partir do repositório de origem"
+          git push origin ${{ github.ref_name }}
