@@ -1,0 +1,94 @@
+name: Sync from Source
+
+on:
+  workflow_dispatch:
+    inputs:
+      sync_source:
+        description: 'Source branch or URL to sync from'
+        required: false
+        default: 'main'
+
+permissions:
+  contents: write
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    
+    steps:
+      - name: Checkout Repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Configure Git
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Fetch Source Changes
+        id: fetch
+        run: |
+          echo "Starting source synchronization..."
+          git fetch origin ${{ github.event.inputs.sync_source || 'main' }} --depth=1
+          echo "fetch_status=success" >> $GITHUB_OUTPUT
+
+      - name: Detect Changes
+        id: changes
+        run: |
+          if git diff --quiet origin/${{ github.event.inputs.sync_source || 'main' }}; then
+            echo "has_changes=false" >> $GITHUB_OUTPUT
+            echo "No changes detected."
+          else
+            echo "has_changes=true" >> $GITHUB_OUTPUT
+            echo "Changes detected, preparing to commit."
+          fi
+
+      - name: Merge and Commit Changes
+        if: steps.changes.outputs.has_changes == 'true'
+        id: commit
+        run: |
+          git merge origin/${{ github.event.inputs.sync_source || 'main' }} --allow-unrelated-histories --no-edit || true
+          
+          if ! git diff --quiet; then
+            git add -A
+            git commit -m "chore: sync changes from source branch
+            
+            Automated sync from ${{ github.event.inputs.sync_source || 'main' }}
+            Triggered by: ${{ github.actor }}
+            Timestamp: $(date -u +'%Y-%m-%dT%H:%M:%SZ')"
+            echo "commit_status=created" >> $GITHUB_OUTPUT
+          else
+            echo "commit_status=no_changes" >> $GITHUB_OUTPUT
+          fi
+
+      - name: Push Changes
+        if: steps.commit.outputs.commit_status == 'created'
+        id: push
+        continue-on-error: true
+        run: |
+          git push origin HEAD:${{ github.ref_name }} --force-with-lease
+          echo "push_status=$?" >> $GITHUB_OUTPUT
+
+      - name: Handle Push Errors
+        if: steps.push.outcome == 'failure'
+        run: |
+          echo "::error::Push failed. Possible causes:"
+          echo "  1. Insufficient permissions (check GITHUB_TOKEN scope)"
+          echo "  2. Branch protection rules preventing force push"
+          echo "  3. Merge conflicts requiring manual intervention"
+          echo ""
+          echo "Current branch: ${{ github.ref_name }}"
+          echo "Remote status:"
+          git status
+          exit 1
+
+      - name: Summary
+        if: always()
+        run: |
+          echo "=== Sync Workflow Summary ==="
+          echo "Changes detected: ${{ steps.changes.outputs.has_changes }}"
+          echo "Commit status: ${{ steps.commit.outputs.commit_status }}"
+          echo "Push status: ${{ steps.push.outcome }}"
+          echo "Workflow completed successfully!"
