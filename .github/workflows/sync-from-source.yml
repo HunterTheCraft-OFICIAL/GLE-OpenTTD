@@ -1,1 +1,61 @@
 
+name: Sync from OpenTTD Source
+
+on:
+  workflow_dispatch: # Permite executar manualmente na aba Actions
+  schedule:
+    - cron: '0 3 * * *' # Opcional: roda todo dia às 3am UTC
+
+jobs:
+  sync:
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write # Permissão crucial para fazer o push
+
+    steps:
+      - name: Checkout do repositório atual
+        uses: actions/checkout@v4
+        with:
+          token: ${{ secrets.GITHUB_TOKEN }}
+          fetch-depth: 0 # Baixa todo o histórico para evitar conflitos
+
+      - name: Configurar Git User
+        run: |
+          git config --global user.name "github-actions[bot]"
+          git config --global user.email "github-actions[bot]@users.noreply.github.com"
+
+      - name: Clonar repositório fonte (HunterTheCraft-OFICIAL/openttd-android-Mobile-Android-)
+        run: |
+          echo "📥 Clonando repositório fonte..."
+          # Clona em um diretório temporário fora da pasta atual
+          git clone --depth 1 https://github.com/HunterTheCraft-OFICIAL/openttd-android-Mobile-Android-.git /tmp/source_repo
+
+      - name: Limpar arquivos atuais (exceto .git)
+        run: |
+          echo "🧹 Limpando diretório atual..."
+          # Remove tudo, mas mantém a pasta .git intacta
+          find . -mindepth 1 -not -path "./.git" -not -path "./.git/*" -delete
+          
+          # Copia tudo do source para cá
+          echo "📂 Copiando novos arquivos..."
+          cp -rv /tmp/source_repo/. .
+
+      - name: Verificar alterações
+        id: git_status
+        run: |
+          if [ -z "$(git status --porcelain)" ]; then
+            echo "changes=false" >> $GITHUB_OUTPUT
+            echo "✅ Nenhum alteração detectada."
+          else
+            echo "changes=true" >> $GITHUB_OUTPUT
+            echo "🔄 Alterações detectadas."
+          fi
+
+      - name: Commit e Push das alterações
+        if: steps.git_status.outputs.changes == 'true'
+        run: |
+          echo "🚀 Enviando alterações..."
+          git add -A
+          git commit -m "chore: sync with HunterTheCraft-OFICIAL/openttd-android-Mobile-Android- [auto]"
+          git push origin main
+          echo "✅ Sincronização concluída com sucesso!"
